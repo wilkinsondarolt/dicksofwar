@@ -8,7 +8,7 @@ public class UnitSelectionHandler : NetworkBehaviour
 {
   [SerializeField] private LayerMask layerMask = new LayerMask();
   private Camera mainCamera;
-  private List<Unit> selectedUnits = new List<Unit>();
+  public List<Unit> selectedUnits { get; } = new List<Unit>();
 
   private void Start()
   {
