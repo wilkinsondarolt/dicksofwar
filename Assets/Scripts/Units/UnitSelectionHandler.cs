@@ -6,7 +6,11 @@ using UnityEngine.InputSystem;
 
 public class UnitSelectionHandler : NetworkBehaviour
 {
+  [SerializeField] private RectTransform unitSelectionArea = null;
   [SerializeField] private LayerMask layerMask = new LayerMask();
+
+  private Vector2 startPosition;
+  private RTSPlayer player;
   private Camera mainCamera;
   public List<Unit> selectedUnits { get; } = new List<Unit>();
 
@@ -17,45 +21,97 @@ public class UnitSelectionHandler : NetworkBehaviour
 
   private void Update()
   {
+    if (player == null)
+    {
+      player = NetworkClient.connection.identity.GetComponent<RTSPlayer>();
+    }
+
     Mouse mouse = Mouse.current;
 
     if (mouse.leftButton.wasPressedThisFrame)
     {
-        foreach(Unit selectedUnit in selectedUnits)
-        {
-            selectedUnit.Deselect();
-        }
-        selectedUnits.Clear();
-
+      StartSelectionArea();
     }
     else if (mouse.leftButton.wasReleasedThisFrame)
     {
       ClearSelectionArea();
     }
+    else if (mouse.leftButton.isPressed)
+    {
+      UpdateSelectionArea();
+    }
+  }
+
+  private void StartSelectionArea()
+  {
+    foreach (Unit selectedUnit in selectedUnits)
+    {
+      selectedUnit.Deselect();
+    }
+    selectedUnits.Clear();
+
+    unitSelectionArea.gameObject.SetActive(true);
+    startPosition = Mouse.current.position.ReadValue();
+
+    UpdateSelectionArea();
+  }
+
+  private void UpdateSelectionArea()
+  {
+    Vector2 mousePosition = Mouse.current.position.ReadValue();
+
+    float areaWidth = mousePosition.x - startPosition.x;
+    float areaHeight = mousePosition.y - startPosition.y;
+
+    unitSelectionArea.sizeDelta = new Vector2(Mathf.Abs(areaWidth), Mathf.Abs(areaHeight));
+    unitSelectionArea.anchoredPosition = startPosition + new Vector2(areaWidth / 2, areaHeight / 2);
   }
 
   private void ClearSelectionArea()
   {
-    Ray ray = mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+    unitSelectionArea.gameObject.SetActive(false);
 
-    if (!Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, layerMask))
+    if (unitSelectionArea.sizeDelta.magnitude == 0)
     {
+      Ray ray = mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+
+      if (!Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, layerMask))
+      {
+        return;
+      }
+
+      if (!hit.collider.TryGetComponent<Unit>(out Unit unit))
+      {
+        return;
+      }
+
+      if (!unit.isOwned)
+      {
+        return;
+      }
+
+      selectedUnits.Add(unit);
+
+      foreach (Unit selectedUnit in selectedUnits)
+      {
+        selectedUnit.Select();
+      }
+
       return;
     }
 
-    if (!hit.collider.TryGetComponent<Unit>(out Unit unit)) {
-        return;
-    }
+    Vector2 min = unitSelectionArea.anchoredPosition - (unitSelectionArea.sizeDelta / 2);
+    Vector2 max = unitSelectionArea.anchoredPosition + (unitSelectionArea.sizeDelta / 2);
 
-    if (!unit.isOwned) {
-        return;
-    }
-
-    selectedUnits.Add(unit);
-
-    foreach(Unit selectedUnit in selectedUnits)
+    foreach (Unit unit in player.GetMyUnits())
     {
-        selectedUnit.Select();
+      Vector3 screenPosition = mainCamera.WorldToScreenPoint(unit.transform.position);
+
+      if (screenPosition.x > min.x && screenPosition.x < max.x && screenPosition.y > min.y && screenPosition.y < max.y)
+      {
+        selectedUnits.Add(unit);
+        unit.Select();
+      }
     }
   }
 }
